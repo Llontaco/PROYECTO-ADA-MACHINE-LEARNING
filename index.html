@@ -65,10 +65,21 @@
       }
 
       output.innerHTML = `
-        <p><strong>🧠 Modelo ML:</strong> ${data.complejidad_modelo} (${data.funcion_equivalente})</p>
-        <p><strong>🧮 Heurística:</strong> ${data.complejidad_heuristica}</p>
-        <p><strong>🔁 Bucles:</strong> for=${data.for_niveles}, while=${data.while_niveles}</p>
-        ${alerta}
+        <div class="space-y-2">
+          <div>
+            <span class="font-bold text-blue-700">🧠 Modelo ML:</span>
+            <span>${data.complejidad_modelo} <span class="text-gray-500">(${data.funcion_equivalente})</span></span>
+          </div>
+          <div>
+            <span class="font-bold text-green-700">🧮 Heurística:</span>
+            <span>${data.complejidad_heuristica}</span>
+          </div>
+          <div>
+            <span class="font-bold text-purple-700">🔁 Bucles:</span>
+            <span>for=<span class="font-mono">${data.for_niveles}</span>, while=<span class="font-mono">${data.while_niveles}</span></span>
+          </div>
+          ${alerta}
+        </div>
       `;
 
       resultado.classList.remove('hidden');
