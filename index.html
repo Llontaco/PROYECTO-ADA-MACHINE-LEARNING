@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Predicción de Complejidad</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    textarea { width: 100%; height: 200px; }
+    button { margin-top: 1rem; padding: 10px 20px; }
+    #resultado { margin-top: 2rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Analizador de Complejidad Algorítmica</h1>
+  <p>Escribe un código en Python:</p>
+  <textarea id="codigo"></textarea><br />
+  <button onclick="enviarCodigo()">Analizar Complejidad</button>
+  <div id="resultado"></div>
+
+  <script>
+  async function enviarCodigo() {
+    const codigo = document.getElementById("codigo").value;
+
+    try {
+      const res = await fetch("http://127.0.0.1:5000/predecir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo })
+      });
+
+      const data = await res.json();
+      console.log("✅ Respuesta del servidor:", data);
+document.getElementById("resultado").innerText = `🧠 Complejidad estimada: ${data.complejidad}`;  } catch (err) {
+      console.error("❌ Error:", err);
+      document.getElementById("resultado").innerText = "❌ Error al contactar al servidor.";
+    }
+  }
+
+</script>
+    </script>
+    <script>
+        
+</script>
+</body>
+</html>
