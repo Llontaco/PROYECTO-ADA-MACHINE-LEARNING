@@ -1,4 +1,5 @@
 import ast
+import math 
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 import pandas as pd
@@ -52,6 +53,23 @@ def extraer_features(codigo):
     features["profundidad_bucles"] = max_loop_depth(tree)
 
     return features
+
+def estimar_complejidad_heuristica(for_niveles, while_niveles):
+    if for_niveles == 0 and while_niveles == 0:
+        return "O(1)"
+    elif for_niveles == 0:
+        return f"O((log(n))^{while_niveles})"
+    elif while_niveles == 0:
+        return f"O(n^{for_niveles})"
+    else:
+        return f"O(n^{for_niveles} * (log(n))^{while_niveles})"
+
+def calcular_tn(n, for_niveles, while_niveles):
+    try:
+        tn = math.pow(n, for_niveles) * math.pow(math.log(n, 2), while_niveles)
+        return min(int(tn), 4000)
+    except:
+        return 4000
 
 # Aplica la función a cada fila y guarda el nuevo dataset
 features_extraidos = df["codigo"].apply(extraer_features)

@@ -3,22 +3,38 @@ import joblib
 import pandas as pd 
 import ast
 from flask_cors import CORS
+import matplotlib.pyplot as plt
+import math
+import io
+import base64
+from flask import render_template
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+from heuristica import estimar_complejidad_heuristica, calcular_tn
 
 app = Flask(__name__)
-CORS(app)  # Permitir CORS para todas las rutas
+CORS(app)
+
+# Cargar modelo una sola vez
 modelo = joblib.load("modelo_complejidad.pkl")
+
+# -------------------------------
+# Funciones de análisis de código
+# -------------------------------
 
 def max_loop_depth(node, depth=0):
     max_depth = depth
     for child in ast.iter_child_nodes(node):
         if isinstance(child, (ast.For, ast.While)):
-            max_depth = max(max_depth, max_loop_depth(child, depth+1))
+            max_depth = max(max_depth, max_loop_depth(child, depth + 1))
         else:
             max_depth = max(max_depth, max_loop_depth(child, depth))
     return max_depth
 
 def extraer_features(codigo):
-    # Limpia caracteres invisibles y normaliza espacios
     codigo_limpio = (
         codigo.replace('\xa0', ' ')
               .replace('\t', ' ')
@@ -47,13 +63,11 @@ def extraer_features(codigo):
     nombres_funciones = set()
     funciones_recursivas = set()
 
-    # Primero, recolecta los nombres de las funciones definidas
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.FunctionDef):
             func_count += 1
             nombres_funciones.add(nodo.name)
 
-    # Ahora, cuenta los otros elementos y busca llamadas recursivas
     for nodo in ast.walk(arbol):
         if isinstance(nodo, ast.For):
             for_count += 1
@@ -62,14 +76,12 @@ def extraer_features(codigo):
         elif isinstance(nodo, ast.If):
             if_count += 1
         elif isinstance(nodo, ast.Call):
-            # Si la función llamada tiene el mismo nombre que alguna función definida, es recursivo
             if hasattr(nodo.func, "id") and nodo.func.id in nombres_funciones:
                 funciones_recursivas.add(nodo.func.id)
 
     if funciones_recursivas:
         recursivo = 1
 
-    # Calcula la profundidad máxima de bucles
     profundidad_bucles = max_loop_depth(arbol)
 
     return {
@@ -82,36 +94,110 @@ def extraer_features(codigo):
         "profundidad_bucles": profundidad_bucles
     }
 
-@app.route("/predecir", methods=["POST"])
+# ------------------------------------
+# Endpoint: Predecir complejidad
+# ------------------------------------
+@app.route('/predecir', methods=['POST'])
 def predecir():
-    data = request.get_json()
-    print("Datos recibidos:", data)
-    codigo = data.get("codigo", "")
-    features = extraer_features(codigo)
-    print("Features extraídas:", features)  # <-- Agrega esta línea
-    input_modelo = pd.DataFrame([{
-        "for": features["for"],
-        "while": features["while"],
-        "if": features["if"],
-        "funciones": features["funciones"],
-        "recursivo": features["recursivo"],
-        "lineas": features["lineas"],
-        "profundidad_bucles": features["profundidad_bucles"]
-    }])
-    
-    prediccion = modelo.predict(input_modelo)[0]
-    return jsonify({"complejidad": prediccion})
+    datos = request.get_json()
+    codigo = datos.get('codigo', '')
 
+    if not codigo.strip():
+        return jsonify({"error": "Código vacío"}), 400
+
+    features = extraer_features(codigo)
+    input_modelo = pd.DataFrame([features])
+    prediccion = modelo.predict(input_modelo)[0]
+
+    # Equivalencias
+    equivalencias = {
+        "constant": "f(n) = 1",
+        "linear": "f(n) = n",
+        "logarithmic": "f(n) = log(n)",
+        "linear_logarithmic": "f(n) = n * log(n)",
+        "quadratic": "f(n) = n²",
+        "cubic": "f(n) = n³",
+        "exponential": "f(n) = 2ⁿ"
+    }
+
+    funcion_equivalente = equivalencias.get(prediccion, "f(n) desconocida")
+
+    # Heurística
+    heuristica = estimar_complejidad_heuristica(features["for"], features["while"])
+
+    # Mapeo heurística a clase ML
+    mapa_heuristica_a_modelo = {
+        "O(1)": "constant",
+        "O(n)": "linear",
+        "O(log(n))": "logarithmic",
+        "O(n log(n))": "linear_logarithmic",
+        "O(n^2)": "quadratic",
+        "O(n^3)": "cubic",
+        "O(2^n)": "exponential"
+    }
+
+    heuristica_clase = mapa_heuristica_a_modelo.get(heuristica, "desconocida")
+
+    advertencia = None
+    if heuristica_clase != prediccion:
+        advertencia = "⚠ La estimación heurística no coincide con la predicción del modelo. Puede haber un error."
+
+    return jsonify({
+        "complejidad_modelo": prediccion,
+        "funcion_equivalente": funcion_equivalente,
+        "complejidad_heuristica": heuristica,
+        "for_niveles": features["for"],
+        "while_niveles": features["while"],
+        "advertencia": advertencia
+    })
+
+# ------------------------------------
+# Endpoint: Generar gráfico comparativo
+# ------------------------------------
+@app.route("/graficar", methods=["POST"])
+def graficar():
+    datos = request.get_json()
+    for_niveles = datos.get("for", 0)
+    while_niveles = datos.get("while", 0)
+
+    x = list(range(1, 13))
+    tn = [calcular_tn(n, for_niveles, while_niveles) for n in x]
+    logn = [min(math.log(n, 2), 4000) for n in x]
+    lineal = x
+    nlogn = [min(n * math.log(n, 2), 4000) for n in x]
+    cuadrado = [min(n**2, 4000) for n in x]
+    cubo = [min(n**3, 4000) for n in x]
+    exp2 = [min(2**n, 4000) for n in x]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(x, tn, label="T(n) estimada", linewidth=2, color='black')
+    plt.plot(x, logn, label="O(log(n))")
+    plt.plot(x, lineal, label="O(n)")
+    plt.plot(x, nlogn, label="O(n log n)")
+    plt.plot(x, cuadrado, label="O(n²)")
+    plt.plot(x, cubo, label="O(n³)")
+    plt.plot(x, exp2, label="O(2ⁿ)")
+
+    plt.xlabel("n")
+    plt.ylabel("Tiempo estimado")
+    plt.title("Comparación de Complejidades")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    img = io.BytesIO()
+    plt.savefig(img, format='png')
+    img.seek(0)
+    img_b64 = base64.b64encode(img.read()).decode('utf-8')
+    plt.close()
+
+    return jsonify({"grafico": img_b64})
+
+# ------------------------------------
+# Ejecutar aplicación
+# ------------------------------------
 if __name__ == "__main__":
     app.run(debug=True)
 
-def contar_anidamiento(node, nivel=0):
-    max_nivel = nivel
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, (ast.For, ast.While)):
-            max_nivel = max(max_nivel, contar_anidamiento(child, nivel + 1))
-        else:
-            max_nivel = max(max_nivel, contar_anidamiento(child, nivel))
-    return  max_nivel
 
-anidamiento_max = contar_anidamiento(arbol)
+
