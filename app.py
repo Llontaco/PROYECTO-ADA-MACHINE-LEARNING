@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import joblib
 import pandas as pd 
 import ast
@@ -7,24 +7,24 @@ import matplotlib.pyplot as plt
 import math
 import io
 import base64
-from flask import render_template
 
+from heuristica import estimar_complejidad_heuristica, calcular_tn
+
+# Inicializar Flask
+app = Flask(__name__)
+CORS(app)
+
+# Página principal
 @app.route("/")
 def index():
     return render_template("index.html")
 
-from heuristica import estimar_complejidad_heuristica, calcular_tn
-
-app = Flask(__name__)
-CORS(app)
-
-# Cargar modelo una sola vez
+# Cargar modelo ML
 modelo = joblib.load("modelo_complejidad.pkl")
 
-# -------------------------------
-# Funciones de análisis de código
-# -------------------------------
-
+# ------------------------------------------
+# Funciones para extracción de características
+# ------------------------------------------
 def max_loop_depth(node, depth=0):
     max_depth = depth
     for child in ast.iter_child_nodes(node):
@@ -35,31 +35,18 @@ def max_loop_depth(node, depth=0):
     return max_depth
 
 def extraer_features(codigo):
-    codigo_limpio = (
-        codigo.replace('\xa0', ' ')
-              .replace('\t', ' ')
-              .replace('\r', '')
-    )
+    codigo_limpio = codigo.replace('\xa0', ' ').replace('\t', ' ').replace('\r', '')
     try:
         arbol = ast.parse(codigo_limpio)
     except Exception as e:
         print("Error al parsear el código:", e)
         return {
-            "for": 0,
-            "while": 0,
-            "if": 0,
-            "funciones": 0,
-            "recursivo": 0,
-            "lineas": len([l for l in codigo_limpio.strip().split("\n") if l.strip()]),
+            "for": 0, "while": 0, "if": 0, "funciones": 0,
+            "recursivo": 0, "lineas": len([l for l in codigo_limpio.strip().split("\n") if l.strip()]),
             "profundidad_bucles": 0
         }
 
-    for_count = 0
-    while_count = 0
-    if_count = 0
-    func_count = 0
-    recursivo = 0
-    lineas = len([l for l in codigo_limpio.strip().split("\n") if l.strip()])
+    for_count = while_count = if_count = func_count = recursivo = 0
     nombres_funciones = set()
     funciones_recursivas = set()
 
@@ -83,15 +70,12 @@ def extraer_features(codigo):
         recursivo = 1
 
     profundidad_bucles = max_loop_depth(arbol)
+    lineas = len([l for l in codigo_limpio.strip().split("\n") if l.strip()])
 
     return {
-        "for": for_count,
-        "while": while_count,
-        "if": if_count,
-        "funciones": func_count,
-        "recursivo": recursivo,
-        "lineas": lineas,
-        "profundidad_bucles": profundidad_bucles
+        "for": for_count, "while": while_count, "if": if_count,
+        "funciones": func_count, "recursivo": recursivo,
+        "lineas": lineas, "profundidad_bucles": profundidad_bucles
     }
 
 # ------------------------------------
@@ -109,7 +93,6 @@ def predecir():
     input_modelo = pd.DataFrame([features])
     prediccion = modelo.predict(input_modelo)[0]
 
-    # Equivalencias
     equivalencias = {
         "constant": "f(n) = 1",
         "linear": "f(n) = n",
@@ -121,11 +104,8 @@ def predecir():
     }
 
     funcion_equivalente = equivalencias.get(prediccion, "f(n) desconocida")
-
-    # Heurística
     heuristica = estimar_complejidad_heuristica(features["for"], features["while"])
 
-    # Mapeo heurística a clase ML
     mapa_heuristica_a_modelo = {
         "O(1)": "constant",
         "O(n)": "linear",
@@ -152,7 +132,7 @@ def predecir():
     })
 
 # ------------------------------------
-# Endpoint: Generar gráfico comparativo
+# Endpoint: Graficar T(n) vs otras
 # ------------------------------------
 @app.route("/graficar", methods=["POST"])
 def graficar():

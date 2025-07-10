@@ -15,7 +15,7 @@
   </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-6 text-white">
-  <div class="bg-white/90 shadow-2xl rounded-2xl p-8 max-w-2xl w-full text-gray-800">
+  <div class="bg-white/90 shadow-2xl rounded-2xl p-8 max-w-3xl w-full text-gray-800">
     <h1 class="text-2xl font-bold mb-6 text-center text-blue-600">🔍 Analizador de Complejidad Algorítmica</h1>
     
     <form id="form" class="space-y-4">
@@ -26,6 +26,11 @@
     <div id="resultado" class="mt-6 hidden">
       <h2 class="text-lg font-semibold text-gray-700 mb-2">📊 Resultados</h2>
       <div id="output" class="bg-gray-50 rounded-lg p-4 text-sm space-y-2 border border-gray-200"></div>
+
+      <!-- Gráfico de complejidad -->
+      <div id="grafico-container" class="mt-6 text-center">
+        <img id="grafico-img" class="mx-auto rounded-lg shadow-md max-w-full hidden" alt="Gráfico de complejidades" />
+      </div>
     </div>
   </div>
 
@@ -33,16 +38,16 @@
     const form = document.getElementById('form');
     const resultado = document.getElementById('resultado');
     const output = document.getElementById('output');
+    const graficoImg = document.getElementById('grafico-img');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const codigo = document.getElementById('codigo').value;
 
+      // Llamar a /predecir
       const res = await fetch("http://localhost:5000/predecir", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ codigo })
       });
 
@@ -50,22 +55,37 @@
 
       if (data.error) {
         output.innerHTML = `<p class="text-red-600 font-semibold">${data.error}</p>`;
-      } else {
-        let alerta = "";
-        if (data.complejidad_modelo && data.complejidad_heuristica &&
-            !data.funcion_equivalente.includes(data.complejidad_heuristica.replace("O(", "").replace(")", ""))) {
-          alerta = `<p class="text-yellow-600 font-semibold">⚠️ Advertencia: El modelo ML y la heurística no coinciden.</p>`;
-        }
-
-        output.innerHTML = `
-          <p><strong>🧠 Modelo ML:</strong> ${data.complejidad_modelo} (${data.funcion_equivalente})</p>
-          <p><strong>🧮 Heurística:</strong> ${data.complejidad_heuristica}</p>
-          <p><strong>🔁 Bucles:</strong> for=${data.for_niveles}, while=${data.while_niveles}</p>
-          ${alerta}
-        `;
-
-        resultado.classList.remove('hidden');
+        return;
       }
+
+      let alerta = "";
+      if (data.complejidad_modelo && data.complejidad_heuristica &&
+          !data.funcion_equivalente.includes(data.complejidad_heuristica.replace("O(", "").replace(")", ""))) {
+        alerta = `<p class="text-yellow-600 font-semibold">⚠️ Advertencia: El modelo ML y la heurística no coinciden.</p>`;
+      }
+
+      output.innerHTML = `
+        <p><strong>🧠 Modelo ML:</strong> ${data.complejidad_modelo} (${data.funcion_equivalente})</p>
+        <p><strong>🧮 Heurística:</strong> ${data.complejidad_heuristica}</p>
+        <p><strong>🔁 Bucles:</strong> for=${data.for_niveles}, while=${data.while_niveles}</p>
+        ${alerta}
+      `;
+
+      resultado.classList.remove('hidden');
+
+      // Llamar a /graficar con los datos recibidos
+      const graficoRes = await fetch("http://localhost:5000/graficar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          for: data.for_niveles,
+          while: data.while_niveles
+        })
+      });
+
+      const graficoData = await graficoRes.json();
+      graficoImg.src = `data:image/png;base64,${graficoData.grafico}`;
+      graficoImg.classList.remove('hidden');
     });
   </script>
 </body>
